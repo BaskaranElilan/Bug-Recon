@@ -43,15 +43,21 @@ echo -e ""
 }
 # --- LOGGING ─────────────────────────────────────────────────
 LOG_FILE=""
-log() { echo -e "${GREEN}[+]${NC} $1" | tee -a "$LOG_FILE"; }
-warn() { echo -e "${YELLOW}[!]${NC} $1" | tee -a "$LOG_FILE"; }
-err() { echo -e "${RED}[-]${NC} $1" | tee -a "$LOG_FILE"; }
-info() { echo -e "${BLUE}[*]${NC} $1" | tee -a "$LOG_FILE"; }
+write_log() {
+    local line="$1"
+    echo -e "$line"
+    [[ -n "$LOG_FILE" ]] && echo -e "$line" >> "$LOG_FILE"
+    return 0
+}
+log() { write_log "${GREEN}[+]${NC} $1"; }
+warn() { write_log "${YELLOW}[!]${NC} $1"; }
+err() { write_log "${RED}[-]${NC} $1"; }
+info() { write_log "${BLUE}[*]${NC} $1"; }
 section() {
-    echo "" | tee -a "$LOG_FILE"
-    echo -e "${MAGENTA}${BOLD}╔══════════════════════════════════════╗${NC}" | tee -a "$LOG_FILE"
-    echo -e "${MAGENTA}${BOLD}║  $1${NC}" | tee -a "$LOG_FILE"
-    echo -e "${MAGENTA}${BOLD}╚══════════════════════════════════════╝${NC}" | tee -a "$LOG_FILE"
+    write_log ""
+    write_log "${MAGENTA}${BOLD}╔══════════════════════════════════════╗${NC}"
+    write_log "${MAGENTA}${BOLD}║  $1${NC}"
+    write_log "${MAGENTA}${BOLD}╚══════════════════════════════════════╝${NC}"
 }
 
 # ─── USAGE ───────────────────────────────────────────────────
@@ -185,13 +191,13 @@ check_and_install() {
         ["assetfinder"]="github.com/tomnomnom/assetfinder@latest"
         ["waybackurls"]="github.com/tomnomnom/waybackurls@latest"
         ["anew"]="github.com/tomnomnom/anew@latest"
-        ["uro"]="github.com/s0md3v/uro@latest"
         ["qsreplace"]="github.com/tomnomnom/qsreplace@latest"
         ["notify"]="github.com/projectdiscovery/notify/cmd/notify@latest"
         ["alterx"]="github.com/projectdiscovery/alterx/cmd/alterx@latest"
         ["tlsx"]="github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
         ["hakrawler"]="github.com/hakluke/hakrawler@latest"
         ["puredns"]="github.com/d3mondev/puredns/v2@latest"
+        ["trufflehog"]="github.com/trufflesecurity/trufflehog/v3@latest"
     )
 
     # ── Findomain (binary install) ────────────────────────────
@@ -232,7 +238,7 @@ check_and_install() {
     declare -A PY_TOOLS=(
         ["arjun"]="arjun"
         ["dirsearch"]="dirsearch"
-        ["truffleHog"]="trufflehog"
+        ["uro"]="uro"
         ["dnsrecon"]="dnsrecon"
     )
 
@@ -240,7 +246,12 @@ check_and_install() {
     for tool in "${!PY_TOOLS[@]}"; do
         if ! command -v "$tool" &>/dev/null; then
             warn "Installing Python tool: $tool"
-            pip3 install "${PY_TOOLS[$tool]}" -q 2>/dev/null && log "Installed: $tool" || err "Failed: $tool"
+            pip3 install "${PY_TOOLS[$tool]}" -q 2>/dev/null || pip3 install --break-system-packages "${PY_TOOLS[$tool]}" -q 2>/dev/null
+            if command -v "$tool" &>/dev/null; then
+                log "Installed: $tool"
+            else
+                err "Failed: $tool"
+            fi
         else
             log "Already installed: $tool"
         fi
@@ -251,7 +262,7 @@ check_and_install() {
     if [[ ! -f /opt/LinkFinder/linkfinder.py ]]; then
         warn "Installing LinkFinder..."
         git clone -q https://github.com/GerbenJavado/LinkFinder.git /opt/LinkFinder 2>/dev/null
-        pip3 install -r /opt/LinkFinder/requirements.txt -q 2>/dev/null
+        pip3 install -r /opt/LinkFinder/requirements.txt -q 2>/dev/null || pip3 install --break-system-packages -r /opt/LinkFinder/requirements.txt -q 2>/dev/null
         log "LinkFinder installed"
     fi
 
@@ -259,7 +270,7 @@ check_and_install() {
     if [[ ! -f /opt/SecretFinder/SecretFinder.py ]]; then
         warn "Installing SecretFinder..."
         git clone -q https://github.com/m4ll0k/SecretFinder.git /opt/SecretFinder 2>/dev/null
-        pip3 install -r /opt/SecretFinder/requirements.txt -q 2>/dev/null
+        pip3 install -r /opt/SecretFinder/requirements.txt -q 2>/dev/null || pip3 install --break-system-packages -r /opt/SecretFinder/requirements.txt -q 2>/dev/null
         log "SecretFinder installed"
     fi
 
@@ -267,7 +278,7 @@ check_and_install() {
     if [[ ! -f /opt/ParamSpider/paramspider.py ]]; then
         warn "Installing ParamSpider..."
         git clone -q https://github.com/devanshbatham/ParamSpider.git /opt/ParamSpider 2>/dev/null
-        pip3 install -r /opt/ParamSpider/requirements.txt -q 2>/dev/null
+        pip3 install -r /opt/ParamSpider/requirements.txt -q 2>/dev/null || pip3 install --break-system-packages -r /opt/ParamSpider/requirements.txt -q 2>/dev/null
         log "ParamSpider installed"
     fi
 

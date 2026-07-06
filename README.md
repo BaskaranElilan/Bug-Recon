@@ -67,6 +67,16 @@ chmod +x bug_recon.sh
 sudo bash bug_recon.sh --install
 ```
 
+
+## Install Notes
+
+Run installation with root privileges and an active internet connection:
+
+```bash
+sudo bash bug_recon.sh --install
+```
+
+Bug Recon uses `apt`, `go install`, `pip3`, and a few GitHub release downloads. If a tool still fails to install, rerun the command after checking connectivity, package-manager locks, and Go/Python paths.
 ## Usage
 
 ```bash
