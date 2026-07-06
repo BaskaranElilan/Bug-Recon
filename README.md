@@ -56,7 +56,7 @@ Runs last because it is time-intensive. Feroxbuster scans live subdomains with `
 - Root or sudo access
 - Active internet connection
 
-The `--install` mode attempts to install required tools automatically.
+The `--install` mode attempts to install required tools automatically. For manual setup, see [MANUAL_INSTALLATION.md](MANUAL_INSTALLATION.md).
 
 ## Installation
 
@@ -76,7 +76,7 @@ Run installation with root privileges and an active internet connection:
 sudo bash bug_recon.sh --install
 ```
 
-Bug Recon uses `apt`, `go install`, `pip3`, and a few GitHub release downloads. If a tool still fails to install, rerun the command after checking connectivity, package-manager locks, and Go/Python paths.
+Bug Recon uses `apt`, `go install`, `pip3`/`pipx`, and a few GitHub release downloads. If a tool still fails to install, rerun the command after checking connectivity, package-manager locks, and Go/Python paths.
 ## Usage
 
 ```bash
@@ -156,11 +156,11 @@ subdomains/live_401_auth_required.txt     Auth bypass candidates
 
 ## Tools Used
 
-Go-based: subfinder, httpx, nuclei, dnsx, naabu, katana, gau, assetfinder, waybackurls, anew, uro, qsreplace, alterx, tlsx, hakrawler, puredns, ffuf, notify.
+Go-based: subfinder, httpx, nuclei, dnsx, naabu, katana, gau, assetfinder, waybackurls, anew, qsreplace, alterx, tlsx, hakrawler, puredns, ffuf, notify, trufflehog.
 
 System packages: nmap, masscan, nikto, wafw00f, whatweb, dirb, gobuster, dnsutils, whois, curl, jq, seclists, chromium.
 
-Python-based: arjun, dirsearch, trufflehog, dnsrecon.
+Python-based: arjun, dirsearch, uro, dnsrecon.
 
 Compiled or git-cloned: LinkFinder, SecretFinder, ParamSpider, massdns, findomain, feroxbuster.
 
