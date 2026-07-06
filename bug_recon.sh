@@ -150,7 +150,7 @@ check_and_install() {
 
     # ── System packages ──────────────────────────────────────
     local APT_TOOLS=(
-        "nmap" "curl" "wget" "git" "python3" "python3-pip"
+        "nmap" "curl" "wget" "git" "python3" "python3-pip" "pipx" "golang-go" "build-essential"
         "dnsutils" "whois" "jq" "unzip" "masscan"
         "nikto" "wafw00f" "whatweb" "dirb" "gobuster"
         "chromium" "chromium-driver" "seclists"
@@ -170,11 +170,25 @@ check_and_install() {
     if ! command -v go &>/dev/null; then
         warn "Installing Go..."
         local GO_VER="1.22.3"
-        wget -q "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
-        rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
-        export PATH=$PATH:/usr/local/go/bin
-        echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> /root/.bashrc
-        log "Go installed"
+        local GO_ARCH="amd64"
+        [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]] && GO_ARCH="arm64"
+        local GO_URL="https://go.dev/dl/go${GO_VER}.linux-${GO_ARCH}.tar.gz"
+        local GO_TARBALL="/tmp/go${GO_VER}.linux-${GO_ARCH}.tar.gz"
+
+        rm -f "$GO_TARBALL"
+        if wget -q --tries=3 --timeout=30 "$GO_URL" -O "$GO_TARBALL" && gzip -t "$GO_TARBALL" 2>/dev/null; then
+            rm -rf /usr/local/go
+            tar -C /usr/local -xzf "$GO_TARBALL" && log "Go installed from go.dev"
+        else
+            warn "Go download failed or was incomplete, falling back to apt golang-go"
+            apt-get install -y -qq golang-go 2>/dev/null || true
+        fi
+
+        export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+        grep -q '/usr/local/go/bin' /root/.bashrc 2>/dev/null || \
+            echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> /root/.bashrc
+
+        command -v go &>/dev/null && log "Go ready: $(go version)" || err "Go install failed"
     fi
     export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
 
@@ -216,9 +230,9 @@ check_and_install() {
     # ── massdns (for puredns) ─────────────────────────────────
     if ! command -v massdns &>/dev/null; then
         warn "Installing massdns..."
-        git clone -q https://github.com/blechschmidt/massdns.git /tmp/massdns 2>/dev/null && \
+        rm -rf /tmp/massdns && git clone -q https://github.com/blechschmidt/massdns.git /tmp/massdns 2>/dev/null && \
             make -C /tmp/massdns -s 2>/dev/null && \
-            cp /tmp/massdns/bin/massdns /usr/local/bin/ && \
+            cp /tmp/massdns/bin/massdns /usr/local/bin/ && chmod +x /usr/local/bin/massdns && \
             log "massdns installed" || err "massdns install failed"
     else
         log "Already installed: massdns"
@@ -228,7 +242,12 @@ check_and_install() {
     for tool in "${!GO_TOOLS[@]}"; do
         if ! command -v "$tool" &>/dev/null; then
             warn "Installing Go tool: $tool"
-            GOPATH=$HOME/go go install "${GO_TOOLS[$tool]}" 2>/dev/null && log "Installed: $tool" || err "Failed: $tool"
+            if command -v go &>/dev/null && GOPATH=$HOME/go go install "${GO_TOOLS[$tool]}" 2>/dev/null; then
+                export PATH=$PATH:$HOME/go/bin
+                command -v "$tool" &>/dev/null && log "Installed: $tool" || err "Failed: $tool"
+            else
+                err "Failed: $tool"
+            fi
         else
             log "Already installed: $tool"
         fi
@@ -246,7 +265,10 @@ check_and_install() {
     for tool in "${!PY_TOOLS[@]}"; do
         if ! command -v "$tool" &>/dev/null; then
             warn "Installing Python tool: $tool"
-            pip3 install "${PY_TOOLS[$tool]}" -q 2>/dev/null || pip3 install --break-system-packages "${PY_TOOLS[$tool]}" -q 2>/dev/null
+            python3 -m pip install "${PY_TOOLS[$tool]}" -q 2>/dev/null || \
+                python3 -m pip install --break-system-packages "${PY_TOOLS[$tool]}" -q 2>/dev/null || \
+                pipx install "${PY_TOOLS[$tool]}" --force >/dev/null 2>&1
+            export PATH=$PATH:/root/.local/bin:$HOME/.local/bin
             if command -v "$tool" &>/dev/null; then
                 log "Installed: $tool"
             else
@@ -297,7 +319,13 @@ check_and_install() {
         log "SecLists installed"
     fi
 
-    log "\n✅ All tools check complete!\n"
+    echo ""
+    command -v go &>/dev/null || warn "Go is still missing. Go-based tools that were not already installed may fail."
+    command -v trufflehog &>/dev/null || warn "trufflehog is still missing. GitHub secret scanning will be skipped."
+    command -v arjun &>/dev/null || warn "arjun is still missing. Hidden parameter discovery will be skipped."
+    command -v uro &>/dev/null || warn "uro is still missing. URL deduplication will use raw merged URLs."
+    log "✅ All tools check complete!"
+
 }
 
 # ─── FOLDER SETUP ────────────────────────────────────────────
@@ -850,9 +878,14 @@ phase6_endpoints() {
         sort -u > "$EP_DIR/all_urls_raw.txt"
     log "Total raw URLs: $(wc -l < "$EP_DIR/all_urls_raw.txt")"
 
-    # URO - deduplicate smart
-    info "Smart deduplication with URO..."
-    uro -i "$EP_DIR/all_urls_raw.txt" -o "$EP_DIR/all_urls_clean.txt" 2>/dev/null
+    # URO - deduplicate smart, with sort fallback when uro is unavailable
+    if command -v uro &>/dev/null; then
+        info "Smart deduplication with URO..."
+        uro -i "$EP_DIR/all_urls_raw.txt" -o "$EP_DIR/all_urls_clean.txt" 2>/dev/null
+    else
+        warn "uro not found, using sort -u fallback for URL deduplication"
+        sort -u "$EP_DIR/all_urls_raw.txt" > "$EP_DIR/all_urls_clean.txt"
+    fi
     log "Deduplicated URLs: $(wc -l < "$EP_DIR/all_urls_clean.txt")"
 
     # Categorize URLs
@@ -965,12 +998,16 @@ phase8_params() {
     fi
 
     # Arjun - hidden parameter finder
-    info "Running Arjun for hidden parameters..."
-    while IFS= read -r url; do
-        arjun -u "$url" --stable \
-            -oJ "$PARAM_DIR/arjun_$(echo "$url" | md5sum | cut -d' ' -f1).json" \
-            2>/dev/null
-    done < <(head -20 "$OUTPUT_DIR/endpoints/dynamic_pages.txt")
+    if command -v arjun &>/dev/null; then
+        info "Running Arjun for hidden parameters..."
+        while IFS= read -r url; do
+            arjun -u "$url" --stable \
+                -oJ "$PARAM_DIR/arjun_$(echo "$url" | md5sum | cut -d' ' -f1).json" \
+                2>/dev/null
+        done < <(head -20 "$OUTPUT_DIR/endpoints/dynamic_pages.txt")
+    else
+        warn "Arjun not found, skipping hidden parameter discovery"
+    fi
 
     # Merge all parameter findings
     info "Compiling all discovered parameters..."
