@@ -120,6 +120,22 @@ phase_done() {
     [[ -f "$CHECKPOINT_FILE" ]] && grep -qxF "$1" "$CHECKPOINT_FILE"
 }
 
+ensure_dir() {
+    local dir="$1"
+    mkdir -p "$dir" || { err "Could not create directory: $dir"; return 1; }
+}
+
+reset_file() {
+    local file="$1"
+    ensure_dir "$(dirname "$file")" || return 1
+    : > "$file" || { err "Could not write file: $file"; return 1; }
+}
+
+count_lines() {
+    local file="$1"
+    [[ -f "$file" ]] && wc -l < "$file" || echo 0
+}
+
 # ─── ARG PARSING ─────────────────────────────────────────────
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -356,7 +372,10 @@ setup_dirs() {
         rm -f "$CHECKPOINT_FILE"
     fi
 
-    mkdir -p "$OUTPUT_DIR"/{subdomains,ports,tech,endpoints,params,screenshots,vulnerabilities,js_analysis,cloud,dns,waf,secrets,reports}
+    ensure_dir "$OUTPUT_DIR" || exit 1
+    for subdir in subdomains ports tech endpoints params screenshots vulnerabilities js_analysis cloud dns waf secrets reports; do
+        ensure_dir "$OUTPUT_DIR/$subdir" || exit 1
+    done
     LOG_FILE="$OUTPUT_DIR/recon.log"
     touch "$LOG_FILE"
     log "Output directory: $OUTPUT_DIR"
@@ -716,6 +735,9 @@ phase3_ports() {
     [[ "$PASSIVE_ONLY" == true ]] && return
     section "🔌 PHASE 3: PORT & SERVICE SCANNING"
     local PORT_DIR="$OUTPUT_DIR/ports"
+    ensure_dir "$PORT_DIR" || return
+    reset_file "$PORT_DIR/all_ports.txt" || return
+    reset_file "$PORT_DIR/interesting_ports.txt" || return
 
     TARGET_IP=$(dig +short "$TARGET" A | head -1)
     [[ -z "$TARGET_IP" ]] && { err "Could not resolve IP for $TARGET"; return; }
@@ -724,7 +746,7 @@ phase3_ports() {
     info "Fast port scan with Naabu..."
     naabu -host "$TARGET" -p - -silent -rate 1000 \
         -o "$PORT_DIR/all_ports.txt" 2>/dev/null
-    log "Open ports found: $(wc -l < "$PORT_DIR/all_ports.txt")"
+    log "Open ports found: $(count_lines "$PORT_DIR/all_ports.txt")"
 
     # Nmap - service version detection
     info "Service detection with Nmap..."
@@ -757,6 +779,8 @@ phase3_ports() {
 phase4_tech() {
     section "🛠️  PHASE 4: TECHNOLOGY FINGERPRINTING"
     local TECH_DIR="$OUTPUT_DIR/tech"
+    ensure_dir "$TECH_DIR" || return
+    reset_file "$TECH_DIR/tech_bulk.txt" || return
 
     # httpx tech detection (bulk)
     info "Bulk tech detection with httpx..."
@@ -765,7 +789,7 @@ phase4_tech() {
         -content-length -response-time -follow-redirects \
         -silent -threads "$THREADS" \
         -o "$TECH_DIR/tech_bulk.txt" 2>/dev/null
-    log "Tech detection done: $(wc -l < "$TECH_DIR/tech_bulk.txt") hosts"
+    log "Tech detection done: $(count_lines "$TECH_DIR/tech_bulk.txt") hosts"
 
     # WhatWeb - detailed per-host
     info "Detailed tech fingerprint with WhatWeb..."
@@ -845,6 +869,13 @@ phase5_waf() {
 phase6_endpoints() {
     section "🔗 PHASE 6: ENDPOINT DISCOVERY"
     local EP_DIR="$OUTPUT_DIR/endpoints"
+    ensure_dir "$EP_DIR" || return
+    reset_file "$EP_DIR/gau_urls.txt" || return
+    reset_file "$EP_DIR/wayback_urls.txt" || return
+    reset_file "$EP_DIR/katana_urls.txt" || return
+    reset_file "$EP_DIR/hakrawler_urls.txt" || return
+    reset_file "$EP_DIR/all_urls_raw.txt" || return
+    reset_file "$EP_DIR/all_urls_clean.txt" || return
 
     # GAU - Get All URLs from archives
     info "Fetching URLs from web archives (GAU)..."
@@ -863,7 +894,7 @@ phase6_endpoints() {
         -d 5 -jc -kf all -silent \
         -c "$THREADS" \
         -o "$EP_DIR/katana_urls.txt" 2>/dev/null
-    log "Katana URLs: $(wc -l < "$EP_DIR/katana_urls.txt")"
+    log "Katana URLs: $(count_lines "$EP_DIR/katana_urls.txt")"
 
     # Hakrawler
     info "Crawling with Hakrawler..."
